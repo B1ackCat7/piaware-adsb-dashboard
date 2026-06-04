@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PiAware Local Command</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="rail" aria-label="PiAware links">
+        <a class="rail-mark" href="/" title="Local Command dashboard">PA</a>
+        <a class="rail-item active" href="/" title="Local Command dashboard">LC</a>
+        <a class="rail-item" id="skyaware-link" href="/skyaware/" target="_blank" rel="noreferrer" title="Open SkyAware">SK</a>
+        <a class="rail-item" id="piaware-link" href="/" target="_blank" rel="noreferrer" title="Open original PiAware interface">PI</a>
+        <a class="rail-item" id="aircraft-json-link" href="/skyaware/data/aircraft.json" target="_blank" rel="noreferrer" title="Open live aircraft JSON">JS</a>
+      </aside>
+
+      <main class="console">
+        <header class="command-bar">
+          <div class="identity">
+            <span class="class-label">Unclassified / ADS-B Ops</span>
+            <h1>PiAware Local Command</h1>
+          </div>
+          <div class="bar-metrics">
+            <div class="bar-cell">
+              <span>Station</span>
+              <strong id="station-name">piaware</strong>
+            </div>
+            <div class="bar-cell">
+              <span>UTC</span>
+              <strong id="utc-clock">--:--:--</strong>
+            </div>
+            <div class="bar-cell">
+              <span>Local Net</span>
+              <strong id="local-net">Scanning</strong>
+            </div>
+            <div class="bar-cell">
+              <span>Tailscale</span>
+              <strong id="tailscale-net">Checking</strong>
+            </div>
+            <div class="bar-cell">
+              <span>Refresh</span>
+              <strong><span id="refresh-age">--</span>s</strong>
+            </div>
+          </div>
+        </header>
+
+        <section class="dashboard-grid">
+          <section class="pane left-pane">
+            <div class="pane-header">
+              <span>Current Situation</span>
+              <span id="data-source">pending</span>
+            </div>
+            <div class="kpi-grid">
+              <article class="kpi">
+                <span>Aircraft Now</span>
+                <strong id="aircraft-count">--</strong>
+              </article>
+              <article class="kpi">
+                <span>Msg / Sec</span>
+                <strong id="message-rate">--</strong>
+              </article>
+              <article class="kpi">
+                <span>Max Range</span>
+                <strong><span id="max-range">--</span><small> nm</small></strong>
+              </article>
+              <article class="kpi">
+                <span>CPU Temp</span>
+                <strong><span id="cpu-temp">--</span><small> C</small></strong>
+              </article>
+            </div>
+
+            <div class="section-head">
+              <span>Live Now</span>
+              <button id="sort-aircraft" type="button">Sort: Signal</button>
+            </div>
+            <div class="aircraft-list" id="aircraft-list"></div>
+
+            <div class="section-head">
+              <span>System Watch</span>
+              <span id="uptime">--</span>
+            </div>
+            <div class="watch-list">
+              <div class="watch-row">
+                <span>Load 1m</span>
+                <meter id="load-meter" value="0" min="0" max="4"></meter>
+                <strong id="load-value">--</strong>
+              </div>
+              <div class="watch-row">
+                <span>Memory</span>
+                <meter id="memory-meter" value="0" min="0" max="100"></meter>
+                <strong id="memory-value">--</strong>
+              </div>
+              <div class="watch-row">
+                <span>Disk</span>
+                <meter id="disk-meter" value="0" min="0" max="100"></meter>
+                <strong id="disk-value">--</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="pane center-pane">
+            <div class="pane-header">
+              <span>Operations Surface</span>
+              <span id="receiver-coords">receiver pending</span>
+            </div>
+            <div class="range-wrap">
+              <canvas id="range-canvas" width="760" height="560" aria-label="Aircraft range plot"></canvas>
+              <div class="range-overlay">
+                <span>Range rings: 25 / 50 / 100 nm</span>
+                <strong id="positioned-count">-- positioned</strong>
+              </div>
+            </div>
+            <div class="timeline-panel">
+              <div class="timeline-labels">
+                <span>Aircraft Count</span>
+                <span>Recent Range</span>
+              </div>
+              <div class="timeline-frame">
+                <canvas id="timeline-canvas" width="760" height="120" aria-label="Activity timeline"></canvas>
+              </div>
+            </div>
+          </section>
+
+          <section class="pane right-pane">
+            <div class="pane-header">
+              <span>Receiver Snapshot</span>
+              <span id="feed-state" class="state-pill">Pending</span>
+            </div>
+            <div class="selected-card">
+              <span class="eyebrow">Selected Aircraft</span>
+              <strong id="selected-flight">--</strong>
+              <dl>
+                <div><dt>Hex</dt><dd id="selected-hex">--</dd></div>
+                <div><dt>Altitude</dt><dd id="selected-altitude">--</dd></div>
+                <div><dt>Distance</dt><dd id="selected-distance">--</dd></div>
+                <div><dt>Track</dt><dd id="selected-track">--</dd></div>
+                <div><dt>RSSI</dt><dd id="selected-rssi">--</dd></div>
+                <div><dt>Last Seen</dt><dd id="selected-seen">--</dd></div>
+              </dl>
+            </div>
+
+            <div class="section-head">
+              <span>Service Status</span>
+              <span>systemd</span>
+            </div>
+            <div class="service-list" id="service-list"></div>
+
+            <div class="section-head">
+              <span>Signal</span>
+              <span>last minute</span>
+            </div>
+            <div class="signal-grid">
+              <div><span>Gain</span><strong id="gain-db">--</strong></div>
+              <div><span>Signal</span><strong id="signal-db">--</strong></div>
+              <div><span>Noise</span><strong id="noise-db">--</strong></div>
+              <div><span>Peak</span><strong id="peak-db">--</strong></div>
+            </div>
+
+            <div class="section-head">
+              <span>Alert Log</span>
+              <span>auto</span>
+            </div>
+            <div class="alert-log" id="alert-log"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>

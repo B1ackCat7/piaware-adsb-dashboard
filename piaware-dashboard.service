@@ -1,0 +1,16 @@
+[Unit]
+Description=PiAware Local Command Dashboard
+After=network-online.target dump1090-fa.service piaware.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/piaware-dashboard
+Environment=PIAWARE_DASHBOARD_HOST=0.0.0.0
+Environment=PIAWARE_DASHBOARD_PORT=8088
+ExecStart=/usr/bin/python3 -B /opt/piaware-dashboard/server.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
