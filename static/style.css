@@ -189,6 +189,7 @@ h1 {
   flex-direction: column;
 }
 
+.left-pane,
 .right-pane {
   overflow: hidden;
 }
@@ -262,8 +263,8 @@ small {
 }
 
 .aircraft-list {
-  min-height: 256px;
-  max-height: 33vh;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
 }
 
@@ -318,6 +319,13 @@ button.aircraft-row {
 }
 
 .service-list {
+  flex: 0 0 auto;
+}
+
+.left-pane > .pane-header,
+.left-pane > .section-head,
+.kpi-grid,
+.watch-list {
   flex: 0 0 auto;
 }
 
@@ -621,10 +629,34 @@ dd {
 }
 
 @media (max-height: 900px) and (min-width: 1181px) {
+  .left-pane .pane-header,
+  .left-pane .section-head,
   .right-pane .pane-header,
   .right-pane .section-head {
     min-height: 32px;
     padding: 7px 12px;
+  }
+
+  .left-pane .kpi {
+    padding: 9px 12px;
+  }
+
+  .left-pane .kpi strong {
+    margin-top: 6px;
+    font-size: clamp(24px, 2.5vw, 30px);
+  }
+
+  .left-pane .aircraft-row {
+    min-height: 34px;
+    padding: 7px 12px;
+  }
+
+  .watch-list {
+    padding: 6px 12px 10px;
+  }
+
+  .watch-row {
+    min-height: 28px;
   }
 
   .selected-card {
@@ -661,6 +693,11 @@ dd {
     padding: 6px 12px 10px;
   }
 
+  .right-pane .alert-log {
+    min-height: 0;
+    padding: 4px 12px 6px;
+  }
+
   .signal-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     padding: 10px 12px;
@@ -673,10 +710,6 @@ dd {
   .signal-grid strong {
     margin-top: 4px;
     font-size: 14px;
-  }
-
-  .right-pane .alert-log {
-    min-height: 48px;
   }
 }
 
@@ -704,7 +737,13 @@ dd {
     min-height: 680px;
   }
 
+  .left-pane {
+    overflow: visible;
+  }
+
   .aircraft-list {
+    flex: 0 0 auto;
+    min-height: 256px;
     max-height: 320px;
   }
 }
