@@ -3,6 +3,7 @@ const state = {
   selectedHex: null,
   sortMode: "signal",
   lastRefresh: null,
+  rangeMapKey: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -108,7 +109,7 @@ function render() {
   renderServices(payload.services);
   renderSignal(adsb.signal);
   renderAlerts(payload.alerts);
-  renderRange(adsb.aircraft, adsb.receiver, selected);
+  renderRange(adsb.aircraft, adsb.receiver, selected, payload.map);
   renderTimeline(adsb.history);
   renderFeedState(payload.services);
 }
@@ -251,15 +252,17 @@ function setupCanvas(canvas) {
   return { ctx, width: rect.width, height: rect.height };
 }
 
-function renderRange(aircraft, receiver, selected) {
+function renderRange(aircraft, receiver, selected, mapConfig) {
   const canvas = $("range-canvas");
   const { ctx, width, height } = setupCanvas(canvas);
   ctx.clearRect(0, 0, width, height);
   const cx = width / 2;
   const cy = height / 2;
   const radius = Math.min(width, height) * 0.42;
+  const maxNm = 100;
+  const mapProjection = renderBaseMap(receiver, mapConfig, cx, cy, radius, maxNm);
 
-  ctx.strokeStyle = "#242a32";
+  ctx.strokeStyle = "rgba(201, 209, 217, 0.18)";
   ctx.lineWidth = 1;
   for (const ring of [0.25, 0.5, 1]) {
     ctx.beginPath();
@@ -274,14 +277,16 @@ function renderRange(aircraft, receiver, selected) {
   ctx.stroke();
 
   ctx.fillStyle = "#3fb950";
+  ctx.strokeStyle = "rgba(63, 185, 80, 0.55)";
+  ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.arc(cx, cy, 4, 0, Math.PI * 2);
   ctx.fill();
+  ctx.stroke();
 
-  const maxNm = 100;
   for (const item of aircraft || []) {
     if (!isFinite(item.lat) || !isFinite(item.lon) || !receiver) continue;
-    const point = projectAircraft(item, receiver, cx, cy, radius, maxNm);
+    const point = projectAircraft(item, receiver, cx, cy, radius, maxNm, mapProjection);
     if (!point) continue;
     const isSelected = selected && item.hex === selected.hex;
     ctx.fillStyle = isSelected ? "#d29922" : "#58a6ff";
@@ -304,12 +309,108 @@ function renderRange(aircraft, receiver, selected) {
   ctx.fillText("100 NM", cx + radius - 42, cy - 8);
 }
 
-function projectAircraft(item, receiver, cx, cy, radius, maxNm) {
+function renderBaseMap(receiver, mapConfig, cx, cy, radius, maxNm) {
+  const map = $("range-map");
+  if (!map) return null;
+
+  const rLat = Number(receiver && receiver.lat);
+  const rLon = Number(receiver && receiver.lon);
+  const enabled = mapConfig && mapConfig.enabled && mapConfig.tile_url;
+  if (!enabled || ![rLat, rLon].every(isFinite)) {
+    map.classList.add("disabled");
+    map.innerHTML = "";
+    state.rangeMapKey = "";
+    return null;
+  }
+
+  map.classList.remove("disabled");
+  const zoom = chooseMapZoom(rLat, radius, maxNm);
+  const center = mercatorPoint(rLat, rLon, zoom);
+  const pxPerNm = pixelsPerNmAtZoom(rLat, zoom);
+  const scale = radius / (maxNm * pxPerNm);
+  const tileSize = 256;
+  const scaledTile = tileSize * scale;
+  const width = map.clientWidth;
+  const height = map.clientHeight;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const minTileX = Math.floor(center.x / tileSize - centerX / scaledTile) - 1;
+  const maxTileX = Math.floor(center.x / tileSize + centerX / scaledTile) + 1;
+  const minTileY = Math.floor(center.y / tileSize - centerY / scaledTile) - 1;
+  const maxTileY = Math.floor(center.y / tileSize + centerY / scaledTile) + 1;
+  const worldTiles = 2 ** zoom;
+  const tiles = [];
+
+  for (let x = minTileX; x <= maxTileX; x += 1) {
+    for (let y = minTileY; y <= maxTileY; y += 1) {
+      if (y < 0 || y >= worldTiles) continue;
+      const wrappedX = ((x % worldTiles) + worldTiles) % worldTiles;
+      tiles.push({
+        url: tileUrl(mapConfig.tile_url, zoom, wrappedX, y),
+        left: Math.round(centerX + (x * tileSize - center.x) * scale),
+        top: Math.round(centerY + (y * tileSize - center.y) * scale),
+      });
+    }
+  }
+
+  const key = `${mapConfig.tile_url}|${zoom}|${scale.toFixed(4)}|${tiles.map((tile) => `${tile.url}@${tile.left},${tile.top}`).join(";")}`;
+  if (key !== state.rangeMapKey) {
+    map.replaceChildren(
+      ...tiles.map((tile) => {
+        const img = document.createElement("img");
+        img.alt = "";
+        img.src = tile.url;
+        img.style.left = `${tile.left}px`;
+        img.style.top = `${tile.top}px`;
+        img.style.width = `${scaledTile}px`;
+        img.style.height = `${scaledTile}px`;
+        return img;
+      }),
+    );
+    state.rangeMapKey = key;
+  }
+
+  return { center, zoom, scale };
+}
+
+function chooseMapZoom(lat, radius, maxNm) {
+  const targetPxPerNm = radius / maxNm;
+  const cosLat = Math.max(0.2, Math.cos((Number(lat) * Math.PI) / 180));
+  const rawZoom = Math.log2((targetPxPerNm * cosLat * 40075016.686) / (1852 * 256));
+  return Math.max(3, Math.min(11, Math.round(rawZoom)));
+}
+
+function pixelsPerNmAtZoom(lat, zoom) {
+  const cosLat = Math.max(0.2, Math.cos((Number(lat) * Math.PI) / 180));
+  return (1852 * 256 * 2 ** zoom) / (cosLat * 40075016.686);
+}
+
+function mercatorPoint(lat, lon, zoom) {
+  const sinLat = Math.sin((Math.max(-85.05112878, Math.min(85.05112878, Number(lat))) * Math.PI) / 180);
+  const scale = 256 * 2 ** zoom;
+  return {
+    x: ((Number(lon) + 180) / 360) * scale,
+    y: (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * scale,
+  };
+}
+
+function tileUrl(template, z, x, y) {
+  return template.split("{z}").join(z).split("{x}").join(x).split("{y}").join(y);
+}
+
+function projectAircraft(item, receiver, cx, cy, radius, maxNm, mapProjection) {
   const lat = Number(item.lat);
   const lon = Number(item.lon);
   const rLat = Number(receiver.lat);
   const rLon = Number(receiver.lon);
   if (![lat, lon, rLat, rLon].every(isFinite)) return null;
+  if (mapProjection) {
+    const point = mercatorPoint(lat, lon, mapProjection.zoom);
+    return {
+      x: cx + (point.x - mapProjection.center.x) * mapProjection.scale,
+      y: cy + (point.y - mapProjection.center.y) * mapProjection.scale,
+    };
+  }
   const nmPerLat = 60;
   const nmPerLon = 60 * Math.cos((rLat * Math.PI) / 180);
   const dxNm = (lon - rLon) * nmPerLon;

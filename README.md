@@ -17,7 +17,7 @@ standard-library web server and serves static HTML/CSS/JavaScript.
 - Network status: local interface and Tailscale address when present.
 - PiAware ADS-B data from `dump1090-fa` runtime JSON.
 - Aircraft count, positioned tracks, messages per second, range history, signal,
-  noise, gain, and peak signal.
+  noise, gain, peak signal, and a fixed-scale receiver-centered map plot.
 - Systemd status for `dump1090-fa`, `piaware`, `fa-mlat-client`, and `lighttpd`.
 - Links to the host device's SkyAware page, PiAware page, and aircraft JSON.
 - Palantir-inspired operations-console visual design.
@@ -112,6 +112,30 @@ sudo systemctl daemon-reload
 sudo systemctl restart piaware-dashboard.service
 ```
 
+### Map Tiles
+
+The center range display can show a greyscale base map behind the aircraft plot.
+It is centered automatically from the receiver latitude/longitude reported by
+`dump1090-fa`, so each installation uses that station's own location.
+
+By default, browsers load public OpenStreetMap raster tiles:
+
+```text
+https://tile.openstreetmap.org/{z}/{x}/{y}.png
+```
+
+To use a local or custom tile server, set:
+
+```text
+PIAWARE_DASHBOARD_TILE_URL=http://<tile-server>/{z}/{x}/{y}.png
+```
+
+To disable the base map and keep only the radar-style plot:
+
+```text
+PIAWARE_DASHBOARD_TILE_URL=none
+```
+
 ## Uninstall
 
 From the cloned repo:
@@ -135,5 +159,8 @@ machine health.
 
 ## Privacy
 
-The project does not require cloud access and does not send receiver data
-anywhere. Everything is served locally from the Raspberry Pi.
+The dashboard API does not send receiver data anywhere. Everything is served
+locally from the Raspberry Pi. If the default base map is enabled, the browser
+viewing the dashboard requests map tiles from OpenStreetMap for the receiver's
+general area. Set `PIAWARE_DASHBOARD_TILE_URL=none` or point it at a local tile
+server for fully offline operation.

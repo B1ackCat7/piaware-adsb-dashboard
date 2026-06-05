@@ -24,6 +24,7 @@ APP_ROOT = Path(__file__).resolve().parent
 STATIC_ROOT = APP_ROOT / "static"
 DUMP1090_ROOTS = [Path("/run/dump1090-fa"), Path("/var/run/dump1090-fa")]
 SERVICES = ["dump1090-fa", "piaware", "fa-mlat-client", "lighttpd"]
+DEFAULT_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 
 
 def demo_mode_enabled() -> bool:
@@ -284,8 +285,19 @@ def status_payload() -> dict[str, Any]:
         "generated_at": time.time(),
         "system": system,
         "adsb": adsb,
+        "map": map_config(),
         "services": services,
         "alerts": alert_status(system, adsb, services),
+    }
+
+
+def map_config() -> dict[str, Any]:
+    tile_url = os.environ.get("PIAWARE_DASHBOARD_TILE_URL", DEFAULT_TILE_URL).strip()
+    enabled = tile_url.lower() not in {"", "0", "false", "none", "off"}
+    return {
+        "enabled": enabled,
+        "tile_url": tile_url if enabled else "",
+        "attribution": os.environ.get("PIAWARE_DASHBOARD_TILE_ATTRIBUTION", "OpenStreetMap"),
     }
 
 
