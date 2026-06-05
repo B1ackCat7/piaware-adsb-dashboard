@@ -26,6 +26,10 @@ DUMP1090_ROOTS = [Path("/run/dump1090-fa"), Path("/var/run/dump1090-fa")]
 SERVICES = ["dump1090-fa", "piaware", "fa-mlat-client", "lighttpd"]
 
 
+def demo_mode_enabled() -> bool:
+    return os.environ.get("PIAWARE_DASHBOARD_DEMO", "").lower() in {"1", "true", "yes", "on"}
+
+
 def read_json(path: Path) -> dict[str, Any]:
     try:
         with path.open("r", encoding="utf-8") as handle:
@@ -112,6 +116,14 @@ def network_status() -> dict[str, Any]:
 
 
 def service_status() -> list[dict[str, str]]:
+    if demo_mode_enabled():
+        return [
+            {"name": "dump1090-fa", "state": "active"},
+            {"name": "piaware", "state": "active"},
+            {"name": "fa-mlat-client", "state": "active"},
+            {"name": "lighttpd", "state": "active"},
+        ]
+
     statuses: list[dict[str, str]] = []
     for service in SERVICES:
         try:
@@ -192,7 +204,7 @@ def history_points(root: Path | None, receiver: dict[str, Any]) -> list[dict[str
 
 
 def adsb_status() -> dict[str, Any]:
-    root = dump1090_root()
+    root = None if demo_mode_enabled() else dump1090_root()
     aircraft_json = read_json(root / "aircraft.json") if root else demo_aircraft_raw()
     stats_json = read_json(root / "stats.json") if root else demo_stats()
     receiver_json = read_json(root / "receiver.json") if root else {"lat": 39.0, "lon": -95.0}
@@ -266,7 +278,19 @@ def alert_status(system: dict[str, Any], adsb: dict[str, Any], services: list[di
 
 def status_payload() -> dict[str, Any]:
     services = service_status()
-    system = {
+    system = demo_system_status() if demo_mode_enabled() else system_status()
+    adsb = adsb_status()
+    return {
+        "generated_at": time.time(),
+        "system": system,
+        "adsb": adsb,
+        "services": services,
+        "alerts": alert_status(system, adsb, services),
+    }
+
+
+def system_status() -> dict[str, Any]:
+    return {
         "hostname": socket.gethostname(),
         "load": load_average(),
         "memory": memory_status(),
@@ -275,13 +299,33 @@ def status_payload() -> dict[str, Any]:
         "temperature_c": temperature_c(),
         "network": network_status(),
     }
-    adsb = adsb_status()
+
+
+def demo_system_status() -> dict[str, Any]:
     return {
-        "generated_at": time.time(),
-        "system": system,
-        "adsb": adsb,
-        "services": services,
-        "alerts": alert_status(system, adsb, services),
+        "hostname": "PiAware Demo Station",
+        "load": {"one": 0.22, "five": 0.24, "fifteen": 0.21},
+        "memory": {
+            "total": 1024**3,
+            "used": 318 * 1024**2,
+            "available": 706 * 1024**2,
+            "percent": 31.0,
+        },
+        "disk": {
+            "total": 32 * 1024**3,
+            "used": 6 * 1024**3,
+            "free": 26 * 1024**3,
+            "percent": 18.8,
+        },
+        "uptime_seconds": 417600.0,
+        "temperature_c": 51.1,
+        "network": {
+            "hostname": "PiAware Demo Station",
+            "interfaces": [
+                {"name": "wlan0", "state": "UP", "addresses": ["192.168.1.100/24"]},
+                {"name": "tailscale0", "state": "UNKNOWN", "addresses": ["100.64.0.10/32"]},
+            ],
+        },
     }
 
 

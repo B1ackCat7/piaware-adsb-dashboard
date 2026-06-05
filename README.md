@@ -9,6 +9,8 @@ The dashboard is designed for small PiAware stations: no Node.js, no database,
 no build step, and no external web services. It runs as a tiny Python
 standard-library web server and serves static HTML/CSS/JavaScript.
 
+![PiAware Dashboard screenshot](assets/dashboard-screenshot.jpg)
+
 ## Features
 
 - Pi system health: load, memory, disk, CPU temperature, uptime.
@@ -67,6 +69,12 @@ http://127.0.0.1:8088/
 
 On a non-PiAware machine, the app shows generic demo data so the interface can
 be previewed without receiver hardware.
+
+To force sanitized demo data for screenshots or local previews:
+
+```bash
+PIAWARE_DASHBOARD_DEMO=1 python3 -B server.py
+```
 
 ## Service Commands
 
