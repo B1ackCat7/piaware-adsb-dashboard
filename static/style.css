@@ -677,7 +677,7 @@ dd {
   }
 
   .console {
-    padding: 10px;
+    padding: 10px 10px calc(104px + env(safe-area-inset-bottom, 0px));
   }
 
   .bar-metrics,
@@ -696,5 +696,20 @@ dd {
 
   .aircraft-row span:nth-child(4) {
     display: none;
+  }
+
+  .right-pane {
+    overflow: visible;
+  }
+
+  .right-pane .alert-log {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+    padding-bottom: 18px;
+  }
+
+  .right-pane .alert-row:last-child {
+    border-bottom: 1px solid var(--border-soft);
   }
 }
