@@ -6,18 +6,22 @@ health, Raspberry Pi system status, network state, service status, ADS-B
 activity, and a compact aircraft/range display.
 
 The dashboard is designed for small PiAware stations: no Node.js, no database,
-no build step, and no external web services. It runs as a tiny Python
-standard-library web server and serves static HTML/CSS/JavaScript.
+and no build step. It runs as a small Python standard-library web server and
+serves static HTML/CSS/JavaScript. Optional map tiles are loaded by the viewing
+browser, not by the Raspberry Pi.
 
 ![PiAware Dashboard screenshot](assets/dashboard-screenshot.jpg)
 
 ## Features
 
 - Pi system health: load, memory, disk, CPU temperature, uptime.
-- Network status: local interface and Tailscale address when present.
+- Network status: local interface, Tailscale address, Wi-Fi signal, and link rate.
 - PiAware ADS-B data from `dump1090-fa` runtime JSON.
-- Aircraft count, positioned tracks, messages per second, range history, signal,
-  noise, gain, peak signal, and a fixed-scale receiver-centered map plot.
+- Aircraft count, fresh positioned tracks, messages per second, range history,
+  signal, noise, gain, peak signal, and an automatically scaled receiver-centered
+  map plot.
+- Live data age, API latency, model-aware temperature warnings, and Raspberry Pi
+  throttling flags when `vcgencmd` is available.
 - Systemd status for `dump1090-fa`, `piaware`, `fa-mlat-client`, and `lighttpd`.
 - Links to the host device's SkyAware page, PiAware page, and aircraft JSON.
 - Palantir-inspired operations-console visual design.
@@ -67,14 +71,25 @@ Then open:
 http://127.0.0.1:8088/
 ```
 
-On a non-PiAware machine, the app shows generic demo data so the interface can
-be previewed without receiver hardware.
+On a non-PiAware machine, production mode reports that receiver data is
+unavailable. This prevents a real receiver failure from looking healthy.
 
 To force sanitized demo data for screenshots or local previews:
 
 ```bash
 PIAWARE_DASHBOARD_DEMO=1 python3 -B server.py
 ```
+
+Process liveness and receiver readiness are separate endpoints:
+
+```text
+http://<your-pi-address>:8088/healthz
+http://<your-pi-address>:8088/readyz
+```
+
+`/healthz` confirms the dashboard process is serving requests. `/readyz`
+returns HTTP 503 when required PiAware services or fresh receiver data are not
+available.
 
 ## Service Commands
 
@@ -98,6 +113,10 @@ The service file sets:
 PIAWARE_DASHBOARD_HOST=0.0.0.0
 PIAWARE_DASHBOARD_PORT=8088
 ```
+
+The installer creates a restricted `piaware-dashboard` system user. The
+systemd unit runs without root privileges and enables read-only filesystem and
+process hardening.
 
 To change the port, edit:
 
@@ -136,6 +155,21 @@ To disable the base map and keep only the radar-style plot:
 PIAWARE_DASHBOARD_TILE_URL=none
 ```
 
+Custom tile providers can set visible attribution and its destination:
+
+```text
+PIAWARE_DASHBOARD_TILE_ATTRIBUTION=© Example Maps
+PIAWARE_DASHBOARD_TILE_ATTRIBUTION_URL=https://example.com/attribution
+```
+
+Temperature thresholds can be overridden when the model-aware defaults do not
+fit a station's enclosure or cooling setup:
+
+```text
+PIAWARE_DASHBOARD_TEMP_WARNING=70
+PIAWARE_DASHBOARD_TEMP_CRITICAL=80
+```
+
 ## Uninstall
 
 From the cloned repo:
@@ -156,6 +190,17 @@ The server reads:
 
 It also reads standard Linux system files and `systemctl` status for local
 machine health.
+
+## Tests
+
+Run the standard-library test suite and syntax checks from the repository root:
+
+```bash
+python3 -m unittest discover -s tests -v
+python3 -m py_compile server.py
+node --check static/app.js
+sh -n install.sh uninstall.sh
+```
 
 ## Privacy
 
