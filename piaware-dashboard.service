@@ -5,12 +5,34 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=piaware-dashboard
+Group=piaware-dashboard
+SupplementaryGroups=video
 WorkingDirectory=/opt/piaware-dashboard
 Environment=PIAWARE_DASHBOARD_HOST=0.0.0.0
 Environment=PIAWARE_DASHBOARD_PORT=8088
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/usr/bin/python3 -B /opt/piaware-dashboard/server.py
-Restart=always
+Restart=on-failure
 RestartSec=3
+TimeoutStopSec=10
+UMask=0027
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+CapabilityBoundingSet=
+AmbientCapabilities=
 
 [Install]
 WantedBy=multi-user.target

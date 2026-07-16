@@ -4,16 +4,17 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PiAware Local Command</title>
-    <link rel="stylesheet" href="/style.css">
+    <link rel="icon" href="/favicon.svg?v=3" type="image/svg+xml">
+    <link rel="stylesheet" href="/style.css?v=3">
   </head>
   <body>
     <div class="app-shell">
       <aside class="rail" aria-label="PiAware links">
-        <a class="rail-mark" href="/" title="Local Command dashboard">PA</a>
-        <a class="rail-item active" href="/" title="Local Command dashboard">LC</a>
-        <a class="rail-item" id="skyaware-link" href="/skyaware/" target="_blank" rel="noreferrer" title="Open SkyAware">SK</a>
-        <a class="rail-item" id="piaware-link" href="/" target="_blank" rel="noreferrer" title="Open original PiAware interface">PI</a>
-        <a class="rail-item" id="aircraft-json-link" href="/skyaware/data/aircraft.json" target="_blank" rel="noreferrer" title="Open live aircraft JSON">JS</a>
+        <a class="rail-mark" href="/" aria-label="PiAware dashboard home" title="Local Command dashboard">PA</a>
+        <a class="rail-item active" href="/" aria-label="Local Command dashboard" aria-current="page" title="Local Command dashboard">LC</a>
+        <a class="rail-item" id="skyaware-link" href="/skyaware/" target="_blank" rel="noreferrer" aria-label="Open SkyAware" title="Open SkyAware">SK</a>
+        <a class="rail-item" id="piaware-link" href="/" target="_blank" rel="noreferrer" aria-label="Open original PiAware interface" title="Open original PiAware interface">PI</a>
+        <a class="rail-item" id="aircraft-json-link" href="/skyaware/data/aircraft.json" target="_blank" rel="noreferrer" aria-label="Open live aircraft JSON" title="Open live aircraft JSON">JS</a>
       </aside>
 
       <main class="console">
@@ -25,7 +26,7 @@
           <div class="bar-metrics">
             <div class="bar-cell">
               <span>Station</span>
-              <strong id="station-name">piaware</strong>
+              <strong id="station-name" title="piaware">piaware</strong>
             </div>
             <div class="bar-cell">
               <span>UTC</span>
@@ -42,6 +43,7 @@
             <div class="bar-cell">
               <span>Refresh</span>
               <strong><span id="refresh-age">--</span>s</strong>
+              <small id="api-latency">API pending</small>
             </div>
           </div>
         </header>
@@ -50,7 +52,7 @@
           <section class="pane left-pane">
             <div class="pane-header">
               <span>Current Situation</span>
-              <span id="data-source">pending</span>
+              <span id="data-source" aria-live="polite">pending</span>
             </div>
             <div class="kpi-grid">
               <article class="kpi">
@@ -83,19 +85,29 @@
             </div>
             <div class="watch-list">
               <div class="watch-row">
-                <span>Load 1m</span>
+                <label for="load-meter">Load 1m</label>
                 <meter id="load-meter" value="0" min="0" max="4"></meter>
                 <strong id="load-value">--</strong>
               </div>
               <div class="watch-row">
-                <span>Memory</span>
+                <label for="memory-meter">Memory</label>
                 <meter id="memory-meter" value="0" min="0" max="100"></meter>
                 <strong id="memory-value">--</strong>
               </div>
               <div class="watch-row">
-                <span>Disk</span>
+                <label for="disk-meter">Disk</label>
                 <meter id="disk-meter" value="0" min="0" max="100"></meter>
                 <strong id="disk-value">--</strong>
+              </div>
+              <div class="watch-row">
+                <label for="wifi-meter">Wi-Fi</label>
+                <meter id="wifi-meter" value="-90" min="-90" max="-30" low="-75" high="-65" optimum="-30"></meter>
+                <strong id="wifi-value">--</strong>
+              </div>
+              <div class="watch-row">
+                <label for="data-age-meter">Data age</label>
+                <meter id="data-age-meter" value="30" min="0" max="30" low="10" high="15" optimum="0"></meter>
+                <strong id="data-age-value">--</strong>
               </div>
             </div>
           </section>
@@ -107,9 +119,10 @@
             </div>
             <div class="range-wrap">
               <div class="range-map" id="range-map" aria-hidden="true"></div>
-              <canvas id="range-canvas" width="760" height="560" aria-label="Aircraft range plot"></canvas>
+              <canvas id="range-canvas" width="760" height="560" aria-label="Aircraft range plot">Aircraft positions are also available in the Live Now list.</canvas>
+              <a class="map-attribution" id="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" hidden>© OpenStreetMap contributors</a>
               <div class="range-overlay">
-                <span>Range rings: 25 / 50 / 100 nm</span>
+                <span id="range-rings">Range rings: 25 / 50 / 100 nm</span>
                 <strong id="positioned-count">-- positioned</strong>
               </div>
             </div>
@@ -119,7 +132,7 @@
                 <span>Recent Range</span>
               </div>
               <div class="timeline-frame">
-                <canvas id="timeline-canvas" width="760" height="120" aria-label="Activity timeline"></canvas>
+                <canvas id="timeline-canvas" width="760" height="120" aria-label="Activity timeline">Recent aircraft count and range history.</canvas>
               </div>
             </div>
           </section>
@@ -127,9 +140,9 @@
           <section class="pane right-pane">
             <div class="pane-header">
               <span>Receiver Snapshot</span>
-              <span id="feed-state" class="state-pill">Pending</span>
+              <span id="feed-state" class="state-pill" aria-live="polite">Pending</span>
             </div>
-            <div class="selected-card">
+            <div class="selected-card" aria-live="polite">
               <span class="eyebrow">Selected Aircraft</span>
               <strong id="selected-flight">--</strong>
               <dl>
@@ -146,7 +159,7 @@
               <span>Service Status</span>
               <span>systemd</span>
             </div>
-            <div class="service-list" id="service-list"></div>
+            <div class="service-list" id="service-list" aria-label="Service status"></div>
 
             <div class="section-head">
               <span>Signal</span>
@@ -163,11 +176,11 @@
               <span>Alert Log</span>
               <span>auto</span>
             </div>
-            <div class="alert-log" id="alert-log"></div>
+            <div class="alert-log" id="alert-log" role="status" aria-live="polite" aria-atomic="false"></div>
           </section>
         </section>
       </main>
     </div>
-    <script src="/app.js"></script>
+    <script src="/app.js?v=3"></script>
   </body>
 </html>

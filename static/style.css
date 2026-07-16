@@ -8,7 +8,7 @@
   --border-soft: #242a32;
   --text: #c9d1d9;
   --muted: #8b949e;
-  --quiet: #6e7681;
+  --quiet: #7d8590;
   --green: #3fb950;
   --amber: #d29922;
   --blue: #58a6ff;
@@ -125,7 +125,7 @@ button {
 .pane-header,
 .section-head,
 .eyebrow,
-.bar-cell span,
+.bar-cell > span,
 .kpi span,
 .signal-grid span {
   text-transform: uppercase;
@@ -165,6 +165,29 @@ h1 {
   font-family: var(--mono);
   font-size: 13px;
   color: var(--text);
+}
+
+.bar-cell small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--quiet);
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.data-stale .command-bar {
+  box-shadow: inset 0 2px 0 rgba(248, 81, 73, 0.7);
 }
 
 .dashboard-grid {
@@ -331,12 +354,20 @@ button.aircraft-row {
 
 .watch-row {
   display: grid;
-  grid-template-columns: 74px minmax(90px, 1fr) 56px;
+  grid-template-columns: 68px minmax(80px, 1fr) 66px;
   gap: 10px;
   align-items: center;
   min-height: 32px;
   font-family: var(--mono);
   color: var(--muted);
+}
+
+.watch-row label {
+  color: var(--muted);
+}
+
+.watch-row strong {
+  white-space: nowrap;
 }
 
 meter {
@@ -450,6 +481,26 @@ meter::-webkit-meter-even-less-good-value {
   color: var(--green);
 }
 
+.map-attribution {
+  position: absolute;
+  z-index: 3;
+  right: 20px;
+  bottom: 48px;
+  max-width: calc(100% - 40px);
+  padding: 3px 5px;
+  border: 1px solid rgba(48, 54, 61, 0.8);
+  background: rgba(7, 11, 16, 0.86);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
+  text-decoration: none;
+}
+
+.map-attribution:hover,
+.map-attribution:focus-visible {
+  color: var(--text);
+}
+
 .timeline-panel {
   flex: 0 0 148px;
   min-height: 0;
@@ -560,6 +611,7 @@ dd {
 .state-warn,
 .service-inactive,
 .service-failed,
+.service-unknown,
 .alert-warning {
   color: var(--amber);
   border-color: rgba(210, 153, 34, 0.42);
@@ -760,6 +812,12 @@ dd {
     justify-content: space-between;
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+
+  .rail-mark,
+  .rail-item {
+    width: 44px;
+    height: 44px;
   }
 
   .console {

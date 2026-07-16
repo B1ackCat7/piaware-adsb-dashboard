@@ -4,9 +4,21 @@ const state = {
   sortMode: "signal",
   lastRefresh: null,
   rangeMapKey: "",
+  refreshInFlight: false,
+  refreshTimer: null,
+  consecutiveFailures: 0,
+  latencyMs: null,
 };
 
+const REFRESH_INTERVAL_MS = 5000;
+const REQUEST_TIMEOUT_MS = 10000;
+const MAX_BACKOFF_MS = 60000;
+
 const $ = (id) => document.getElementById(id);
+
+function hasValue(value) {
+  return value !== null && value !== undefined && !Number.isNaN(Number(value));
+}
 
 function fmtNumber(value, digits = 0) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "--";
@@ -64,31 +76,59 @@ function statusClass(value) {
   return "state-warn";
 }
 
+function scheduleRefresh(delayMs) {
+  if (state.refreshTimer) window.clearTimeout(state.refreshTimer);
+  state.refreshTimer = window.setTimeout(refresh, delayMs);
+}
+
 async function refresh() {
+  if (state.refreshInFlight) return;
+  state.refreshInFlight = true;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const startedAt = performance.now();
   try {
-    const response = await fetch(`/api/status?ts=${Date.now()}`, { cache: "no-store" });
+    const response = await fetch(`/api/status?ts=${Date.now()}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     state.payload = await response.json();
+    state.latencyMs = Math.round(performance.now() - startedAt);
     state.lastRefresh = Date.now();
+    setText("refresh-age", "0");
+    state.consecutiveFailures = 0;
+    document.body.classList.remove("data-stale");
     render();
   } catch (error) {
-    renderOffline(error);
+    state.consecutiveFailures += 1;
+    const message = error.name === "AbortError" ? "Status request timed out" : error.message;
+    renderOffline(new Error(message));
+  } finally {
+    window.clearTimeout(timeout);
+    state.refreshInFlight = false;
+    const delay = state.consecutiveFailures
+      ? Math.min(MAX_BACKOFF_MS, REFRESH_INTERVAL_MS * 2 ** state.consecutiveFailures)
+      : REFRESH_INTERVAL_MS;
+    scheduleRefresh(delay);
   }
 }
 
 function render() {
   const payload = state.payload;
   if (!payload) return;
-  const system = payload.system;
-  const adsb = payload.adsb;
-  const totals = adsb.totals;
+  const system = payload.system || {};
+  const adsb = payload.adsb || {};
+  const totals = adsb.totals || {};
   const selected = chooseSelected(adsb.aircraft, adsb.selected);
 
   setText("station-name", system.hostname || "piaware");
+  $("station-name").title = system.hostname || "piaware";
   setText("utc-clock", new Date().toISOString().slice(11, 19));
-  setText("local-net", networkAddress(system.network, "192.") || "pending");
-  setText("tailscale-net", networkAddress(system.network, "100.") || "offline");
-  setText("data-source", adsb.source === "demo" ? "demo data" : adsb.source);
+  setText("local-net", networkAddress(system.network, "local") || "pending");
+  setText("tailscale-net", networkAddress(system.network, "tailscale") || "offline");
+  const sourceLabel = adsb.demo ? "demo data" : adsb.available ? adsb.source : "data unavailable";
+  setText("data-source", adsb.stale && adsb.available ? "stale data" : sourceLabel);
   setText("receiver-coords", receiverLabel(adsb.receiver));
   setText("aircraft-count", fmtNumber(totals.aircraft));
   setText("message-rate", fmtNumber(totals.messages_per_sec, 1));
@@ -96,43 +136,70 @@ function render() {
   setText("positioned-count", `${fmtNumber(totals.positioned)} positioned`);
   setText("cpu-temp", fmtNumber(system.temperature_c, 1));
   setText("uptime", `uptime ${fmtDuration(system.uptime_seconds)}`);
-  setText("load-value", fmtNumber(system.load.one, 2));
-  setText("memory-value", `${fmtNumber(system.memory.percent, 1)}%`);
-  setText("disk-value", `${fmtNumber(system.disk.percent, 1)}%`);
+  setText("load-value", fmtNumber(system.load && system.load.one, 2));
+  setText("memory-value", hasValue(system.memory && system.memory.percent) ? `${fmtNumber(system.memory.percent, 1)}%` : "--");
+  setText("disk-value", hasValue(system.disk && system.disk.percent) ? `${fmtNumber(system.disk.percent, 1)}%` : "--");
+  setText("api-latency", hasValue(state.latencyMs) ? `API ${fmtNumber(state.latencyMs)} ms` : "API pending");
 
-  $("load-meter").value = Math.min(system.load.one || 0, 4);
-  $("memory-meter").value = system.memory.percent || 0;
-  $("disk-meter").value = system.disk.percent || 0;
+  const cpuCount = Math.max(Number(system.cpu_count) || 1, 1);
+  $("load-meter").max = cpuCount;
+  $("load-meter").value = Math.min(Number(system.load && system.load.one) || 0, cpuCount);
+  $("memory-meter").value = Number(system.memory && system.memory.percent) || 0;
+  $("disk-meter").value = Number(system.disk && system.disk.percent) || 0;
+  renderWifi(system.network && system.network.wifi);
+  updateAgeIndicators();
 
   renderAircraftList(adsb.aircraft, selected);
   renderSelected(selected);
   renderServices(payload.services);
-  renderSignal(adsb.signal);
+  renderSignal(adsb.signal || {});
   renderAlerts(payload.alerts);
-  renderRange(adsb.aircraft, adsb.receiver, selected, payload.map);
+  const mapAircraft = (adsb.aircraft || []).filter((item) => hasValue(item.lat) && hasValue(item.lon) && (!hasValue(item.seen_pos) || Number(item.seen_pos) <= 60));
+  renderRange(mapAircraft, adsb.receiver, selected, payload.map);
   renderTimeline(adsb.history);
-  renderFeedState(payload.services);
+  renderMapAttribution(payload.map);
+  renderFeedState(payload);
 }
 
 function renderOffline(error) {
-  setText("data-source", "offline");
+  document.body.classList.add("data-stale");
+  const staleSeconds = state.lastRefresh ? Math.floor((Date.now() - state.lastRefresh) / 1000) : null;
+  setText("data-source", staleSeconds === null ? "offline" : `stale ${staleSeconds}s`);
   setText("feed-state", "offline");
   $("feed-state").className = "state-pill state-critical";
   const alertLog = $("alert-log");
-  alertLog.innerHTML = "";
+  alertLog.replaceChildren();
   const row = document.createElement("div");
   row.className = "alert-row";
-  row.innerHTML = `<span class="alert-level alert-critical">error</span><p>${error.message}</p>`;
+  const level = document.createElement("span");
+  level.className = "alert-level alert-critical";
+  level.textContent = "error";
+  const message = document.createElement("p");
+  message.textContent = `${error.message}; retrying automatically`;
+  row.append(level, message);
   alertLog.append(row);
 }
 
-function networkAddress(network, prefix) {
-  for (const iface of network.interfaces || []) {
+function networkAddress(network, kind) {
+  for (const iface of (network && network.interfaces) || []) {
     for (const addr of iface.addresses || []) {
-      if (addr.startsWith(prefix)) return addr.split("/")[0];
+      const address = addr.split("/")[0];
+      const isIpv4 = /^\d+\.\d+\.\d+\.\d+$/.test(address);
+      const isTailscale = iface.name === "tailscale0" || address.startsWith("100.");
+      const isPrivate = address.startsWith("10.") || address.startsWith("192.168.") || /^172\.(1[6-9]|2\d|3[01])\./.test(address);
+      if (kind === "tailscale" && isIpv4 && isTailscale) return address;
+      if (kind === "local" && isIpv4 && isPrivate && !isTailscale && iface.name !== "lo") return address;
     }
   }
   return "";
+}
+
+function renderWifi(wifi) {
+  const signal = wifi && hasValue(wifi.signal_dbm) ? Number(wifi.signal_dbm) : null;
+  $("wifi-meter").value = signal === null ? -90 : Math.max(-90, Math.min(-30, signal));
+  const bitrate = wifi && hasValue(wifi.tx_bitrate_mbps) ? `${fmtNumber(wifi.tx_bitrate_mbps, 1)} Mb/s` : "rate unavailable";
+  setText("wifi-value", signal === null ? (wifi && wifi.connected === false ? "offline" : "--") : `${fmtNumber(signal)} dBm`);
+  $("wifi-value").title = bitrate;
 }
 
 function receiverLabel(receiver) {
@@ -151,36 +218,47 @@ function chooseSelected(aircraft, fallback) {
 function sortedAircraft(aircraft) {
   const copy = [...(aircraft || [])];
   if (state.sortMode === "range") {
-    copy.sort((a, b) => (b.distance_nm || 0) - (a.distance_nm || 0));
+    copy.sort((a, b) => (b.distance_nm ?? -1) - (a.distance_nm ?? -1));
   } else {
     copy.sort((a, b) => {
       const aFresh = a.seen !== undefined && a.seen <= 60 ? 1 : 0;
       const bFresh = b.seen !== undefined && b.seen <= 60 ? 1 : 0;
       if (aFresh !== bFresh) return bFresh - aFresh;
-      return (b.rssi || -999) - (a.rssi || -999);
+      return (b.rssi ?? -999) - (a.rssi ?? -999);
     });
   }
   return copy.slice(0, 12);
 }
 
+function appendAircraftCell(row, tag, text) {
+  const cell = document.createElement(tag);
+  cell.textContent = text;
+  row.append(cell);
+}
+
 function renderAircraftList(aircraft, selected) {
   const list = $("aircraft-list");
-  list.innerHTML = "";
+  list.replaceChildren();
   const rows = sortedAircraft(aircraft);
   if (rows.length === 0) {
-    list.innerHTML = `<div class="aircraft-row"><strong>No tracks</strong><span>--</span><span>--</span><span>--</span></div>`;
+    const empty = document.createElement("div");
+    empty.className = "aircraft-row";
+    appendAircraftCell(empty, "strong", "No tracks");
+    appendAircraftCell(empty, "span", "--");
+    appendAircraftCell(empty, "span", "--");
+    appendAircraftCell(empty, "span", "--");
+    list.append(empty);
     return;
   }
   for (const item of rows) {
     const row = document.createElement("button");
     row.type = "button";
     row.className = `aircraft-row ${selected && selected.hex === item.hex ? "selected" : ""}`;
-    row.innerHTML = `
-      <strong>${item.flight || item.hex || "UNKNOWN"}</strong>
-      <span>${item.altitude ? fmtNumber(item.altitude) : "--"} ft</span>
-      <span>${item.distance_nm ? fmtNumber(item.distance_nm, 1) : "--"} nm</span>
-      <span>${item.rssi ? fmtNumber(item.rssi, 1) : "--"} dB</span>
-    `;
+    row.setAttribute("aria-pressed", selected && selected.hex === item.hex ? "true" : "false");
+    appendAircraftCell(row, "strong", item.flight || item.hex || "UNKNOWN");
+    appendAircraftCell(row, "span", hasValue(item.altitude) ? `${fmtNumber(item.altitude)} ft` : "-- ft");
+    appendAircraftCell(row, "span", hasValue(item.distance_nm) ? `${fmtNumber(item.distance_nm, 1)} nm` : "-- nm");
+    appendAircraftCell(row, "span", hasValue(item.rssi) ? `${fmtNumber(item.rssi, 1)} dB` : "-- dB");
     row.addEventListener("click", () => {
       state.selectedHex = item.hex;
       render();
@@ -192,24 +270,26 @@ function renderAircraftList(aircraft, selected) {
 function renderSelected(item) {
   setText("selected-flight", item ? item.flight || item.hex : "--");
   setText("selected-hex", item ? item.hex || "--" : "--");
-  setText("selected-altitude", item && item.altitude ? `${fmtNumber(item.altitude)} ft` : "--");
-  setText("selected-distance", item && item.distance_nm ? `${fmtNumber(item.distance_nm, 1)} nm` : "--");
-  setText("selected-track", item && item.track ? `${fmtNumber(item.track, 0)} deg` : "--");
-  setText("selected-rssi", item && item.rssi ? `${fmtNumber(item.rssi, 1)} dB` : "--");
+  setText("selected-altitude", item && hasValue(item.altitude) ? `${fmtNumber(item.altitude)} ft` : "--");
+  setText("selected-distance", item && hasValue(item.distance_nm) ? `${fmtNumber(item.distance_nm, 1)} nm` : "--");
+  setText("selected-track", item && hasValue(item.track) ? `${fmtNumber(item.track, 0)} deg` : "--");
+  setText("selected-rssi", item && hasValue(item.rssi) ? `${fmtNumber(item.rssi, 1)} dB` : "--");
   setText("selected-seen", item && item.seen !== undefined ? `${fmtNumber(item.seen, 1)}s` : "--");
 }
 
 function renderServices(services) {
   const list = $("service-list");
-  list.innerHTML = "";
+  list.replaceChildren();
   for (const service of services || []) {
     const row = document.createElement("div");
     const serviceClass = `service-${String(service.state || "unknown").toLowerCase()}`;
     row.className = "service-row";
-    row.innerHTML = `
-      <span>${service.name}</span>
-      <strong class="service-state ${serviceClass}">${service.state}</strong>
-    `;
+    const name = document.createElement("span");
+    name.textContent = service.required ? service.name : `${service.name} (optional)`;
+    const status = document.createElement("strong");
+    status.className = `service-state ${serviceClass}`;
+    status.textContent = service.state || "unknown";
+    row.append(name, status);
     list.append(row);
   }
 }
@@ -223,23 +303,35 @@ function renderSignal(signal) {
 
 function renderAlerts(alerts) {
   const log = $("alert-log");
-  log.innerHTML = "";
+  log.replaceChildren();
   for (const alert of alerts || []) {
     const row = document.createElement("div");
     row.className = "alert-row";
-    row.innerHTML = `
-      <span class="alert-level alert-${alert.level}">${alert.level}</span>
-      <p>${alert.message}</p>
-    `;
+    const level = document.createElement("span");
+    level.className = `alert-level alert-${alert.level}`;
+    level.textContent = alert.level;
+    const message = document.createElement("p");
+    message.textContent = alert.message;
+    row.append(level, message);
     log.append(row);
   }
 }
 
-function renderFeedState(services) {
-  const critical = (services || []).some((service) => ["dump1090-fa", "piaware"].includes(service.name) && service.state !== "active");
+function renderFeedState(payload) {
+  const adsb = payload.adsb || {};
+  const services = payload.services || [];
+  const critical = services.some((service) => service.required && service.state !== "active");
   const node = $("feed-state");
-  node.textContent = critical ? "degraded" : "nominal";
-  node.className = `state-pill ${critical ? "state-warn" : "state-ok"}`;
+  if (!adsb.available) {
+    node.textContent = "offline";
+    node.className = "state-pill state-critical";
+  } else if (adsb.stale || critical) {
+    node.textContent = adsb.stale ? "stale" : "degraded";
+    node.className = "state-pill state-warn";
+  } else {
+    node.textContent = "nominal";
+    node.className = "state-pill state-ok";
+  }
 }
 
 function setupCanvas(canvas) {
@@ -259,7 +351,9 @@ function renderRange(aircraft, receiver, selected, mapConfig) {
   const cx = width / 2;
   const cy = height / 2;
   const radius = Math.min(width, height) * 0.42;
-  const maxNm = 100;
+  const maxDistance = Math.max(...(aircraft || []).map((item) => Number(item.distance_nm) || 0), 0);
+  const maxNm = [20, 40, 100, 200, 300, 400].find((range) => maxDistance <= range) || Math.ceil(maxDistance / 100) * 100;
+  setText("range-rings", `Range rings: ${fmtNumber(maxNm * 0.25)} / ${fmtNumber(maxNm * 0.5)} / ${fmtNumber(maxNm)} nm`);
   const mapProjection = renderBaseMap(receiver, mapConfig, cx, cy, radius, maxNm);
 
   ctx.strokeStyle = "rgba(201, 209, 217, 0.18)";
@@ -306,7 +400,16 @@ function renderRange(aircraft, receiver, selected, mapConfig) {
   ctx.fillStyle = "#6e7681";
   ctx.font = "11px SFMono-Regular, Menlo, monospace";
   ctx.fillText("N", cx - 3, cy - radius - 10);
-  ctx.fillText("100 NM", cx + radius - 42, cy - 8);
+  ctx.fillText(`${fmtNumber(maxNm)} NM`, cx + radius - 52, cy - 8);
+}
+
+function renderMapAttribution(mapConfig) {
+  const node = $("map-attribution");
+  const visible = Boolean(mapConfig && mapConfig.enabled && mapConfig.attribution);
+  node.hidden = !visible;
+  if (!visible) return;
+  node.textContent = mapConfig.attribution;
+  if (mapConfig.attribution_url) node.href = mapConfig.attribution_url;
 }
 
 function renderBaseMap(receiver, mapConfig, cx, cy, radius, maxNm) {
@@ -456,6 +559,20 @@ function tickClock() {
   if (state.lastRefresh) {
     setText("refresh-age", Math.floor((Date.now() - state.lastRefresh) / 1000));
   }
+  updateAgeIndicators();
+}
+
+function updateAgeIndicators() {
+  const baseAge = state.payload && state.payload.adsb && state.payload.adsb.data_age_seconds;
+  if (!hasValue(baseAge)) {
+    setText("data-age-value", "--");
+    $("data-age-meter").value = 30;
+    return;
+  }
+  const elapsed = state.lastRefresh ? (Date.now() - state.lastRefresh) / 1000 : 0;
+  const age = Math.max(0, Number(baseAge) + elapsed);
+  setText("data-age-value", `${fmtNumber(age, age < 10 ? 1 : 0)}s`);
+  $("data-age-meter").value = Math.min(age, 30);
 }
 
 $("sort-aircraft").addEventListener("click", () => {
@@ -469,6 +586,6 @@ window.addEventListener("resize", () => {
 });
 
 configurePiAwareLinks();
+tickClock();
 refresh();
-setInterval(refresh, 5000);
 setInterval(tickClock, 1000);
