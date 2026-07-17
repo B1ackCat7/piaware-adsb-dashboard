@@ -11,6 +11,7 @@ responsive local web interface.
 [![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-PiAware-C51A4A?logo=raspberrypi&logoColor=white)](https://www.raspberrypi.com/)
 [![ADS--B](https://img.shields.io/badge/ADS--B-receiver%20monitoring-2563EB)](https://en.wikipedia.org/wiki/Automatic_Dependent_Surveillance%E2%80%93Broadcast)
 [![Dependencies](https://img.shields.io/badge/third--party%20dependencies-none-2EA44F)](#how-it-works)
+[![GitHub stars](https://img.shields.io/github/stars/B1ackCat7/piaware-adsb-dashboard?style=flat&logo=github)](https://github.com/B1ackCat7/piaware-adsb-dashboard/stargazers)
 
 ![PiAware ADS-B receiver dashboard showing aircraft, range, signal, network, and Raspberry Pi health](assets/dashboard-screenshot.jpg)
 
