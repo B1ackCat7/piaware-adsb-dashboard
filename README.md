@@ -83,8 +83,8 @@ http://<your-pi-address>/skyaware/
 Run on the Raspberry Pi:
 
 ```bash
-git clone https://github.com/B1ackCat7/PiAware-Dashboard.git
-cd PiAware-Dashboard
+git clone https://github.com/B1ackCat7/piaware-adsb-dashboard.git
+cd piaware-adsb-dashboard
 sudo ./install.sh
 ```
 
