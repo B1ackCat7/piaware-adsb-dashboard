@@ -1,46 +1,86 @@
-# PiAware Dashboard
+# PiAware ADS-B Dashboard for Raspberry Pi
 
-A lightweight local dashboard for a Raspberry Pi running
-[FlightAware PiAware](https://github.com/flightaware/piaware). It shows receiver
-health, Raspberry Pi system status, network state, service status, ADS-B
-activity, and a compact aircraft/range display.
+**A lightweight, self-hosted operations dashboard for FlightAware PiAware and
+`dump1090-fa` receivers.**
 
-The dashboard is designed for small PiAware stations: no Node.js, no database,
-and no build step. It runs as a small Python standard-library web server and
-serves static HTML/CSS/JavaScript. Optional map tiles are loaded by the viewing
-browser, not by the Raspberry Pi.
+Monitor live aircraft, receiver range, ADS-B message rates, signal quality,
+Wi-Fi health, Raspberry Pi resources, and essential services from one
+responsive local web interface.
 
-![PiAware Dashboard screenshot](assets/dashboard-screenshot.jpg)
+[![Python 3](https://img.shields.io/badge/Python-3-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-PiAware-C51A4A?logo=raspberrypi&logoColor=white)](https://www.raspberrypi.com/)
+[![ADS--B](https://img.shields.io/badge/ADS--B-receiver%20monitoring-2563EB)](https://en.wikipedia.org/wiki/Automatic_Dependent_Surveillance%E2%80%93Broadcast)
+[![Dependencies](https://img.shields.io/badge/third--party%20dependencies-none-2EA44F)](#how-it-works)
+
+![PiAware ADS-B receiver dashboard showing aircraft, range, signal, network, and Raspberry Pi health](assets/dashboard-screenshot.jpg)
+
+## Why use this dashboard?
+
+PiAware and SkyAware are excellent for aircraft tracking. This companion
+dashboard focuses on the receiver itself: whether data is fresh, services are
+healthy, the Pi is running safely, and the network is reliable.
+
+- **Fast and lightweight:** Python standard library plus static HTML, CSS, and
+  JavaScript—no Node.js, database, containers, or build step.
+- **Receiver-focused:** aircraft activity, positioned tracks, message and
+  position rates, reception range, gain, signal, noise, and peak signal.
+- **Pi health at a glance:** CPU temperature, throttling, load, memory, disk,
+  uptime, Wi-Fi signal, and link rate.
+- **Honest failure states:** production errors are shown as unavailable or
+  stale instead of being replaced with demo data.
+- **Safe service design:** runs as a restricted system user with systemd
+  hardening and separate liveness/readiness endpoints.
+- **Works alongside PiAware:** uses port `8088` and does not replace the
+  standard PiAware or SkyAware interface.
 
 ## Features
 
-- Pi system health: load, memory, disk, CPU temperature, uptime.
-- Network status: local interface, Tailscale address, Wi-Fi signal, and link rate.
-- PiAware ADS-B data from `dump1090-fa` runtime JSON.
-- Aircraft count, fresh positioned tracks, messages per second, range history,
-  signal, noise, gain, peak signal, and an automatically scaled receiver-centered
-  map plot.
-- Live data age, API latency, model-aware temperature warnings, and Raspberry Pi
-  throttling flags when `vcgencmd` is available.
-- Systemd status for `dump1090-fa`, `piaware`, `fa-mlat-client`, and `lighttpd`.
-- Links to the host device's SkyAware page, PiAware page, and aircraft JSON.
-- Palantir-inspired operations-console visual design.
+### ADS-B receiver monitoring
 
-## Requirements
+- Live data from PiAware / `dump1090-fa` runtime JSON.
+- Aircraft count, fresh positioned tracks, message rate, and position rate.
+- Automatically scaled receiver-centered aircraft plot and range history.
+- Aircraft flight, hex code, altitude, track, RSSI, distance, and last-seen
+  details.
+- Gain, signal, noise, and peak-signal monitoring.
+- Data-age and API-latency indicators for detecting a slow or stale feed.
 
-- Raspberry Pi running PiAware / `dump1090-fa`.
+### Raspberry Pi monitoring
+
+- CPU load, memory, disk usage, uptime, and temperature.
+- Model-aware temperature warnings with optional custom thresholds.
+- Raspberry Pi under-voltage and throttling flags through `vcgencmd`.
+- Local network and Tailscale addresses.
+- Wi-Fi connection, signal strength, and transmit link rate.
+
+### Service and operations monitoring
+
+- Required service state for `dump1090-fa` and `piaware`.
+- Optional service state for `fa-mlat-client` and `lighttpd`.
+- Links to SkyAware, PiAware, and the local aircraft JSON feed.
+- `/healthz` process-liveness and `/readyz` receiver-readiness endpoints.
+- Timeout, non-overlapping refresh scheduling, and automatic retry backoff.
+- Compressed API responses and an accessible, responsive interface.
+
+## Quick start
+
+### Requirements
+
+- Raspberry Pi running FlightAware PiAware and `dump1090-fa`.
 - Python 3.
 - systemd.
-- Existing PiAware web interface, usually available at:
+- Git for installation from GitHub.
+
+The standard PiAware interfaces are usually available at:
 
 ```text
 http://<your-pi-address>/
 http://<your-pi-address>/skyaware/
 ```
 
-## Quick Install
+### Install
 
-On your Raspberry Pi:
+Run on the Raspberry Pi:
 
 ```bash
 git clone https://github.com/B1ackCat7/PiAware-Dashboard.git
@@ -48,139 +88,22 @@ cd PiAware-Dashboard
 sudo ./install.sh
 ```
 
-Then open:
+Open the dashboard:
 
 ```text
 http://<your-pi-address>:8088/
 ```
 
-The service uses port `8088` by default, so it does not replace or modify the
-existing PiAware/SkyAware interface on port `80`.
+The installer:
 
-## Manual Run
+1. creates a restricted `piaware-dashboard` system account;
+2. installs the application under `/opt/piaware-dashboard`;
+3. installs and enables `piaware-dashboard.service`;
+4. starts the dashboard and verifies its health endpoint.
 
-For development or testing:
+## How it works
 
-```bash
-python3 -B server.py
-```
-
-Then open:
-
-```text
-http://127.0.0.1:8088/
-```
-
-On a non-PiAware machine, production mode reports that receiver data is
-unavailable. This prevents a real receiver failure from looking healthy.
-
-To force sanitized demo data for screenshots or local previews:
-
-```bash
-PIAWARE_DASHBOARD_DEMO=1 python3 -B server.py
-```
-
-Process liveness and receiver readiness are separate endpoints:
-
-```text
-http://<your-pi-address>:8088/healthz
-http://<your-pi-address>:8088/readyz
-```
-
-`/healthz` confirms the dashboard process is serving requests. `/readyz`
-returns HTTP 503 when required PiAware services or fresh receiver data are not
-available.
-
-## Service Commands
-
-```bash
-sudo systemctl status piaware-dashboard.service
-sudo systemctl restart piaware-dashboard.service
-sudo systemctl stop piaware-dashboard.service
-```
-
-Logs:
-
-```bash
-journalctl -u piaware-dashboard.service -f
-```
-
-## Configuration
-
-The service file sets:
-
-```text
-PIAWARE_DASHBOARD_HOST=0.0.0.0
-PIAWARE_DASHBOARD_PORT=8088
-```
-
-The installer creates a restricted `piaware-dashboard` system user. The
-systemd unit runs without root privileges and enables read-only filesystem and
-process hardening.
-
-To change the port, edit:
-
-```text
-/etc/systemd/system/piaware-dashboard.service
-```
-
-Then run:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart piaware-dashboard.service
-```
-
-### Map Tiles
-
-The center range display can show a greyscale base map behind the aircraft plot.
-It is centered automatically from the receiver latitude/longitude reported by
-`dump1090-fa`, so each installation uses that station's own location.
-
-By default, browsers load public OpenStreetMap raster tiles:
-
-```text
-https://tile.openstreetmap.org/{z}/{x}/{y}.png
-```
-
-To use a local or custom tile server, set:
-
-```text
-PIAWARE_DASHBOARD_TILE_URL=http://<tile-server>/{z}/{x}/{y}.png
-```
-
-To disable the base map and keep only the radar-style plot:
-
-```text
-PIAWARE_DASHBOARD_TILE_URL=none
-```
-
-Custom tile providers can set visible attribution and its destination:
-
-```text
-PIAWARE_DASHBOARD_TILE_ATTRIBUTION=© Example Maps
-PIAWARE_DASHBOARD_TILE_ATTRIBUTION_URL=https://example.com/attribution
-```
-
-Temperature thresholds can be overridden when the model-aware defaults do not
-fit a station's enclosure or cooling setup:
-
-```text
-PIAWARE_DASHBOARD_TEMP_WARNING=70
-PIAWARE_DASHBOARD_TEMP_CRITICAL=80
-```
-
-## Uninstall
-
-From the cloned repo:
-
-```bash
-sudo ./uninstall.sh
-```
-
-## Data Sources
-
-The server reads:
+The server reads PiAware receiver data directly from:
 
 ```text
 /run/dump1090-fa/aircraft.json
@@ -188,12 +111,121 @@ The server reads:
 /run/dump1090-fa/receiver.json
 ```
 
-It also reads standard Linux system files and `systemctl` status for local
-machine health.
+It also reads standard Linux system information, checks local services with
+`systemctl`, and serves a small JSON API plus static frontend files. The
+browser refreshes the dashboard every five seconds.
 
-## Tests
+```text
+PiAware / dump1090-fa JSON
+            │
+            ▼
+    Python dashboard server
+       localhost:8088
+            │
+            ▼
+  HTML + CSS + JavaScript UI
+```
 
-Run the standard-library test suite and syntax checks from the repository root:
+## Service management
+
+```bash
+sudo systemctl status piaware-dashboard.service
+sudo systemctl restart piaware-dashboard.service
+sudo systemctl stop piaware-dashboard.service
+```
+
+Follow service logs:
+
+```bash
+journalctl -u piaware-dashboard.service -f
+```
+
+Check process health and receiver readiness:
+
+```text
+http://<your-pi-address>:8088/healthz
+http://<your-pi-address>:8088/readyz
+```
+
+- `/healthz` returns success when the dashboard process is serving requests.
+- `/readyz` returns HTTP 503 when required PiAware services are unavailable or
+  receiver data is stale.
+
+## Configuration
+
+The default systemd service configuration is:
+
+```text
+PIAWARE_DASHBOARD_HOST=0.0.0.0
+PIAWARE_DASHBOARD_PORT=8088
+```
+
+To change the port, edit
+`/etc/systemd/system/piaware-dashboard.service`, then run:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart piaware-dashboard.service
+```
+
+### Temperature thresholds
+
+The dashboard selects model-aware defaults. Override them when needed for a
+particular enclosure or cooling setup:
+
+```text
+PIAWARE_DASHBOARD_TEMP_WARNING=70
+PIAWARE_DASHBOARD_TEMP_CRITICAL=80
+```
+
+### Map tiles
+
+The receiver-centered range display can show a greyscale base map. By default,
+the viewing browser loads OpenStreetMap raster tiles:
+
+```text
+https://tile.openstreetmap.org/{z}/{x}/{y}.png
+```
+
+Use a local or custom tile provider:
+
+```text
+PIAWARE_DASHBOARD_TILE_URL=http://<tile-server>/{z}/{x}/{y}.png
+```
+
+Disable map tiles for fully offline operation:
+
+```text
+PIAWARE_DASHBOARD_TILE_URL=none
+```
+
+Custom providers can supply visible attribution:
+
+```text
+PIAWARE_DASHBOARD_TILE_ATTRIBUTION=© Example Maps
+PIAWARE_DASHBOARD_TILE_ATTRIBUTION_URL=https://example.com/attribution
+```
+
+## Development and demo mode
+
+Run locally:
+
+```bash
+python3 -B server.py
+```
+
+Then open `http://127.0.0.1:8088/`.
+
+On a machine without PiAware, production mode reports receiver data as
+unavailable. Use sanitized demo data for development or screenshots:
+
+```bash
+PIAWARE_DASHBOARD_DEMO=1 python3 -B server.py
+```
+
+## Testing
+
+Run the standard-library test suite and syntax checks:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -202,10 +234,34 @@ node --check static/app.js
 sh -n install.sh uninstall.sh
 ```
 
-## Privacy
+## Privacy and security
 
-The dashboard API does not send receiver data anywhere. Everything is served
-locally from the Raspberry Pi. If the default base map is enabled, the browser
-viewing the dashboard requests map tiles from OpenStreetMap for the receiver's
-general area. Set `PIAWARE_DASHBOARD_TILE_URL=none` or point it at a local tile
-server for fully offline operation.
+- Receiver and system data stay on the Raspberry Pi and are not sent to an
+  external application server.
+- The dashboard service runs without root privileges and uses systemd sandbox
+  protections.
+- The API does not silently substitute demo values for failed production data.
+- When the default map is enabled, the viewing browser requests map tiles for
+  the receiver's general area from OpenStreetMap.
+- Set `PIAWARE_DASHBOARD_TILE_URL=none` or use a local tile server for fully
+  offline operation.
+- Because the dashboard displays local receiver and network information, expose
+  port `8088` only to networks and users you trust.
+
+## Uninstall
+
+From the cloned repository:
+
+```bash
+sudo ./uninstall.sh
+```
+
+## Project scope
+
+This is an independent community dashboard for local PiAware installations. It
+is not an official FlightAware product and is not affiliated with or endorsed
+by FlightAware.
+
+Related technologies: ADS-B, PiAware, dump1090-fa, SkyAware, FlightAware,
+Raspberry Pi, RTL-SDR, aircraft tracking, receiver monitoring, and self-hosted
+aviation software.
